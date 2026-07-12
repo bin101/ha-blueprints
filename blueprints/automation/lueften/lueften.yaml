@@ -221,24 +221,26 @@ variables:
   notify_persons: !input notify_persons
   tts_engine: !input tts_engine
   tts_media_players: !input tts_media_players
-  # Resolves the mobile_app notify services of all selected persons who are
+  # Resolves the mobile_app device(s) of all selected persons who are
   # currently "home". Uses the person entity's device_trackers attribute to
-  # look up, via the device registry, the corresponding mobile_app device
-  # name (and thus the notify service).
-  notify_services: >
-    {% set ns = namespace(svc=[]) %}
+  # look up the owning device via the device registry. Targeting by
+  # device_id (rather than guessing a notify.mobile_app_<slug> service
+  # name from the device's display name) is what notify.send_message
+  # expects and avoids mismatches when the device's registered name
+  # doesn't map cleanly to a slug.
+  notify_device_ids: >
+    {% set ns = namespace(devices=[]) %}
     {% for p in notify_persons %}
       {% if is_state(p, 'home') %}
         {% for t in state_attr(p, 'device_trackers') or [] %}
           {% set did = device_id(t) %}
           {% if did %}
-            {% set ns.svc = ns.svc +
-               ['notify.mobile_app_' ~ (device_attr(did, 'name') | slugify)] %}
+            {% set ns.devices = ns.devices + [did] %}
           {% endif %}
         {% endfor %}
       {% endif %}
     {% endfor %}
-    {{ ns.svc | unique | list }}
+    {{ ns.devices | unique | list }}
 
 condition: []
 
@@ -269,9 +271,11 @@ action:
                   media_player_entity_id: !input tts_media_players
                   message: "{{ message }}"
           - repeat:
-              for_each: "{{ notify_services }}"
+              for_each: "{{ notify_device_ids }}"
               sequence:
-                - action: "{{ repeat.item }}"
+                - action: notify.send_message
+                  target:
+                    device_id: "{{ repeat.item }}"
                   data:
                     title: !input notify_title
                     message: "{{ message }}"
@@ -304,9 +308,11 @@ action:
                   media_player_entity_id: !input tts_media_players
                   message: "{{ message }}"
           - repeat:
-              for_each: "{{ notify_services }}"
+              for_each: "{{ notify_device_ids }}"
               sequence:
-                - action: "{{ repeat.item }}"
+                - action: notify.send_message
+                  target:
+                    device_id: "{{ repeat.item }}"
                   data:
                     title: !input notify_title
                     message: "{{ message }}"

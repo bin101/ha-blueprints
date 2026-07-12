@@ -36,10 +36,12 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   when at least one sensor reports "open", and "open" only when at least
   one reports "closed". Without sensors, this check is skipped.
 - **Push:** From the list of selected `person` entities, all those
-  currently `home` are filtered out. For each of them, the corresponding
-  `notify.mobile_app_<device_name>` service is resolved via the device
-  registry (`device_trackers` → `device_id` → device name) and called. Any
-  number of persons can be selected.
+  currently `home` are filtered out. For each of them, every linked
+  `device_tracker` is resolved to its owning device via the device registry
+  (`device_trackers` → `device_id`), and `notify.send_message` is called
+  targeting that `device_id` directly. Any number of persons can be
+  selected, and a person with multiple devices (e.g. phone and tablet) gets
+  notified on all of them.
 - **TTS:** If a TTS engine and at least one media player are configured,
   `tts.speak` is played on all selected players.
 
@@ -60,15 +62,18 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 
 ## Known limitations
 
-- Deriving the push notify service from the `person` entity assumes that
-  the person's device tracker(s) come from the `mobile_app` integration and
-  that the device name matches the name the app was registered under
-  (e.g. device "Jane's iPhone" → `notify.mobile_app_janes_iphone`). With
-  different naming schemes (e.g. `owntracks`/`gpslogger` without an
-  associated `mobile_app` device), no service will be found for that
-  person and nothing gets sent — silently, with no error. In that case,
-  check the device name under *Settings → Devices & Services → Devices*,
-  or test the person individually in the auto-generated automation.
+- Requires Home Assistant **2024.6 or newer**, since push notifications are
+  sent via the generic `notify.send_message` action targeting a
+  `device_id` — this only works for notify targets that have been migrated
+  to notify entities (the `mobile_app` integration was one of the first).
+- Resolving the push target assumes the person's device tracker(s) come
+  from the `mobile_app` integration (i.e. the Home Assistant companion app
+  was installed and set up on that device). With trackers from other
+  sources (e.g. `owntracks`/`gpslogger` without an associated `mobile_app`
+  device), no device is found for that person and nothing gets sent —
+  silently, with no error. In that case, check under *Settings → Devices &
+  Services → Devices* whether the person's tracker(s) belong to a
+  `mobile_app` device.
 - No `input_boolean`/helper is required; if Home Assistant restarts while
   the temperature condition is already met, the trigger may fire again
   depending on the remaining `for:` state (standard behavior of template

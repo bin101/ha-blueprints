@@ -6,11 +6,14 @@ blueprint:
     should be opened to air out the house (outside is cooler than inside).
 
     The announcement can go out as a **TTS message** on any number of media
-    players and/or as a **push notification** to any number of directly
-    selected notify targets (e.g. notify.mobile_app_yourphone) - sent only
-    to targets whose linked device is detected as "home". Window sensors
-    are optional: if configured, "close" is only announced when at least
-    one window is open, and "open" only when at least one is closed.
+    players (only within the configured morning/evening time window)
+    and/or as a **push notification** to any number of directly selected
+    notify targets (e.g. notify.mobile_app_yourphone) - sent only to
+    targets whose linked device is detected as "home", with **no time
+    restriction**, so it always goes out whenever the underlying
+    temperature/window condition is met. Window sensors are optional: if
+    configured, "close" is only announced when at least one window is
+    open, and "open" only when at least one is closed.
 
     The TTS and push steps are each their own named action in the
     sequence, so you can test either one on demand straight from the
@@ -85,30 +88,40 @@ blueprint:
               mode: box
 
     time_section:
-      name: Time window
+      name: Time window (TTS only)
       icon: mdi:clock-outline
       input:
         morning_start:
           name: Morning – start
-          description: "\"Close windows\" may only be announced from this time onward."
+          description: >
+            The "close windows" TTS announcement may only play from this
+            time onward. Does not affect the push notification, which has
+            no time restriction.
           default: "05:00:00"
           selector:
             time: {}
         morning_end:
           name: Morning – end
-          description: "\"Close windows\" may only be announced until this time."
+          description: >
+            The "close windows" TTS announcement may only play until this
+            time. Does not affect the push notification.
           default: "11:00:00"
           selector:
             time: {}
         evening_start:
           name: Evening – start
-          description: "\"Open windows\" may only be announced from this time onward."
+          description: >
+            The "open windows" TTS announcement may only play from this
+            time onward. Does not affect the push notification, which has
+            no time restriction.
           default: "18:00:00"
           selector:
             time: {}
         evening_end:
           name: Evening – end
-          description: "\"Open windows\" may only be announced until this time."
+          description: >
+            The "open windows" TTS announcement may only play until this
+            time. Does not affect the push notification.
           default: "23:59:00"
           selector:
             time: {}
@@ -236,15 +249,19 @@ trigger:
       minutes: !input debounce_minutes
 
 variables:
-  # Only what the outer gate below needs. Everything the TTS/push actions
-  # need is declared *inside* each of them (see comment further down) so
-  # that each one is self-sufficient when run individually.
+  # Shared by both actions' own gate conditions below. Everything else
+  # each action needs is declared *inside* it (see comments further down)
+  # so that each one is self-sufficient when run individually.
   window_sensors: !input window_sensors
 
 condition: []
 
 action:
-  - if:
+  # TTS and push are two independent top-level actions, each with its own
+  # gate, rather than one shared gate wrapping both - push is intentionally
+  # NOT time-restricted (see its gate below), only TTS is.
+  - alias: Send TTS announcement
+    if:
       - condition: or
         conditions:
           # Automatic morning run: only within the configured time window
@@ -282,92 +299,117 @@ action:
           - condition: template
             value_template: "{{ trigger is not defined or trigger.id not in ['close', 'open'] }}"
     then:
-      # Each of the two actions below declares its own `variables:` instead
-      # of relying on the top-level block above. Home Assistant's
-      # per-action "Run" test (editor -> action -> Run) does not carry over
-      # variables from outside the action being run, only from within it -
-      # so anything needed here must be self-contained or the test (and,
-      # it turns out, nothing at all) gets sent. See:
+      # Declares its own `variables:` instead of relying on a shared block.
+      # Home Assistant's per-action "Run" test (editor -> action -> Run)
+      # does not carry over variables from outside the action being run,
+      # only from within it - so anything needed here must be
+      # self-contained or the test silently does nothing. See:
       # https://www.home-assistant.io/docs/automation/troubleshooting/
-      - alias: Send TTS announcement
-        sequence:
-          - variables:
-              message_close: !input message_close
-              message_open: !input message_open
-              test_message: !input test_message
-              tts_engine: !input tts_engine
-              tts_media_players: !input tts_media_players
-              # `trigger` is only defined for a real close/open run. A
-              # manual per-action test run has no trigger context, so it
-              # falls back to test_message.
-              message: >
-                {% if trigger is defined and trigger.id == 'close' %}
-                  {{ message_close }}
-                {% elif trigger is defined and trigger.id == 'open' %}
-                  {{ message_open }}
-                {% else %}
-                  {{ test_message }}
-                {% endif %}
-          - if:
-              - condition: template
-                value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
-            then:
-              - action: tts.speak
-                target:
-                  entity_id: !input tts_engine
-                data:
-                  media_player_entity_id: !input tts_media_players
-                  message: "{{ message }}"
+      - variables:
+          message_close: !input message_close
+          message_open: !input message_open
+          test_message: !input test_message
+          tts_engine: !input tts_engine
+          tts_media_players: !input tts_media_players
+          # `trigger` is only defined for a real close/open run. A manual
+          # per-action test run has no trigger context, so it falls back
+          # to test_message.
+          message: >
+            {% if trigger is defined and trigger.id == 'close' %}
+              {{ message_close }}
+            {% elif trigger is defined and trigger.id == 'open' %}
+              {{ message_open }}
+            {% else %}
+              {{ test_message }}
+            {% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
+        then:
+          - action: tts.speak
+            target:
+              entity_id: !input tts_engine
+            data:
+              media_player_entity_id: !input tts_media_players
+              message: "{{ message }}"
 
-      - alias: Send push notification
-        sequence:
-          - variables:
-              message_close: !input message_close
-              message_open: !input message_open
-              test_message: !input test_message
-              notify_targets_input: !input notify_targets
-              message: >
-                {% if trigger is defined and trigger.id == 'close' %}
-                  {{ message_close }}
-                {% elif trigger is defined and trigger.id == 'open' %}
-                  {{ message_open }}
-                {% else %}
-                  {{ test_message }}
-                {% endif %}
-              # Notify targets are picked directly (no guessing a service
-              # name, no relying on a person's device_trackers to find the
-              # right device). For a real automatic run, a target is only
-              # sent to if its device has a device_tracker that reports
-              # "home" - no tracker found, or not home, means it's skipped.
-              # A manual test run (no trigger context) always sends to
-              # every configured target regardless of presence.
-              notify_targets: >
-                {% if trigger is defined and trigger.id in ['close', 'open'] %}
-                  {% set ns = namespace(targets=[]) %}
-                  {% for nt in notify_targets_input %}
-                    {% set trk = namespace(home=false) %}
-                    {% set did = device_id(nt) %}
-                    {% if did %}
-                      {% for e in device_entities(did) %}
-                        {% if e.startswith('device_tracker.') and is_state(e, 'home') %}
-                          {% set trk.home = true %}
-                        {% endif %}
-                      {% endfor %}
-                    {% endif %}
-                    {% if trk.home %}
-                      {% set ns.targets = ns.targets + [nt] %}
+  - alias: Send push notification
+    if:
+      - condition: or
+        conditions:
+          # Same temperature/window-sensor gating as TTS, but deliberately
+          # WITHOUT a time-window condition - push should go out whenever
+          # the underlying condition is met, any time of day.
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ trigger is defined and trigger.id == 'close' }}"
+              - condition: template
+                value_template: >
+                  {{ window_sensors | count == 0
+                     or window_sensors | select('is_state', 'on') | list | count > 0 }}
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ trigger is defined and trigger.id == 'open' }}"
+              - condition: numeric_state
+                entity_id: !input indoor_temp
+                above: !input min_indoor_open
+              - condition: template
+                value_template: >
+                  {{ window_sensors | count == 0
+                     or window_sensors | select('is_state', 'off') | list | count > 0 }}
+          # Manual test run: no real close/open trigger, skip the gating.
+          - condition: template
+            value_template: "{{ trigger is not defined or trigger.id not in ['close', 'open'] }}"
+    then:
+      - variables:
+          message_close: !input message_close
+          message_open: !input message_open
+          test_message: !input test_message
+          notify_targets_input: !input notify_targets
+          message: >
+            {% if trigger is defined and trigger.id == 'close' %}
+              {{ message_close }}
+            {% elif trigger is defined and trigger.id == 'open' %}
+              {{ message_open }}
+            {% else %}
+              {{ test_message }}
+            {% endif %}
+          # Notify targets are picked directly (no guessing a service name,
+          # no relying on a person's device_trackers to find the right
+          # device). For a real automatic run, a target is only sent to if
+          # its device has a device_tracker that reports "home" - no
+          # tracker found, or not home, means it's skipped. A manual test
+          # run (no trigger context) always sends to every configured
+          # target regardless of presence.
+          notify_targets: >
+            {% if trigger is defined and trigger.id in ['close', 'open'] %}
+              {% set ns = namespace(targets=[]) %}
+              {% for nt in notify_targets_input %}
+                {% set trk = namespace(home=false) %}
+                {% set did = device_id(nt) %}
+                {% if did %}
+                  {% for e in device_entities(did) %}
+                    {% if e.startswith('device_tracker.') and is_state(e, 'home') %}
+                      {% set trk.home = true %}
                     {% endif %}
                   {% endfor %}
-                  {{ ns.targets }}
-                {% else %}
-                  {{ notify_targets_input }}
                 {% endif %}
-          - repeat:
-              for_each: "{{ notify_targets }}"
-              sequence:
-                - action: notify.send_message
-                  target:
-                    entity_id: "{{ repeat.item }}"
-                  data:
-                    title: !input notify_title
-                    message: "{{ message }}"
+                {% if trk.home %}
+                  {% set ns.targets = ns.targets + [nt] %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.targets }}
+            {% else %}
+              {{ notify_targets_input }}
+            {% endif %}
+      - repeat:
+          for_each: "{{ notify_targets }}"
+          sequence:
+            - action: notify.send_message
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                title: !input notify_title
+                message: "{{ message }}"

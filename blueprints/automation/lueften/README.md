@@ -31,9 +31,12 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   outliers from triggering it. Because these are genuine state transitions,
   each of the two triggers naturally fires only once per half-day — no
   extra helper entities are needed.
-- **Time window:** The configured morning/evening windows must also be
-  respected, so that, for example, a temperature drop in the middle of the
-  night doesn't trigger an announcement.
+- **Time window (TTS only):** The TTS announcement additionally respects
+  the configured morning/evening windows, so that, for example, a
+  temperature drop in the middle of the night doesn't trigger a spoken
+  announcement. The push notification is **not** time-restricted — it
+  goes out whenever the underlying temperature/window-sensor condition is
+  met, any time of day.
 - **Window sensors (optional):** If configured, "close" is only announced
   when at least one sensor reports "open", and "open" only when at least
   one reports "closed". Without sensors, this check is skipped.
@@ -48,10 +51,12 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 - **TTS:** If a TTS engine and at least one media player are configured,
   `tts.speak` is played on all selected players.
 - **On-demand testing:** The TTS step and the push step are each their own
-  named action ("Send TTS announcement" / "Send push notification") in the
-  sequence — no helper entities required. Open the automation, find either
-  action, and use its **Run** button (⋮ menu) to fire it immediately,
-  bypassing every temperature/time condition. Since a manually run action
+  named, independently-gated top-level action ("Send TTS announcement" /
+  "Send push notification") — no helper entities required. Open the
+  automation, find either action, and use its **Run** button (⋮ menu) to
+  fire it immediately: each action's gate includes a "no trigger context"
+  fallback clause that makes it run regardless of temperature/time when
+  triggered this way. Since a manually run action
   has no trigger context, the blueprint falls back to the separate
   `test_message` text, and the push step falls back to notifying *all*
   configured notify targets regardless of presence (so you can verify

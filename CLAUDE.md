@@ -111,11 +111,18 @@ reminder) and apply to future blueprints with similar needs:
   action for the reference implementation.
 - **Arbitrary number of push recipients:** use a single multi-select
   entity selector (see above) rather than a fixed number of "slots".
+- **Different gating per notification channel is normal — don't force a
+  shared gate.** In `lueften`, TTS is time-window-restricted but push is
+  explicitly NOT (the user wants push to always go out regardless of time
+  of day, only the spoken announcement should respect quiet hours). Model
+  this as two independent top-level `action:` items, each with its **own**
+  `if:` gate — not one shared gate wrapping both. Don't assume every
+  notification channel needs identical conditions; ask if unclear which
+  conditions (time window, presence, etc.) should apply to which channel.
 - **On-demand testing without extra helper entities:** give the
-  TTS-sending and the push-sending steps their own named actions
-  (`alias: Send TTS announcement` / `alias: Send push notification`) as
-  siblings in the top-level `action:` sequence, gated by a single
-  surrounding condition — not duplicated inside multiple `choose` branches.
+  TTS-sending and the push-sending steps their own named, independently
+  gated top-level actions (`alias: Send TTS announcement` / `alias: Send
+  push notification`) — not duplicated inside multiple `choose` branches.
   This lets a user test either step individually from the Home Assistant
   automation editor's built-in per-action **Run** button. Do **not**
   implement "test buttons" via `input_button` helper entities that the

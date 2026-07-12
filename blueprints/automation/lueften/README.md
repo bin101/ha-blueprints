@@ -40,13 +40,11 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 - **Push:** You pick the `notify` entities to send to directly (e.g.
   `notify.mobile_app_yourphone`) — no guessing of service names, no
   detour through a person's device trackers. For each selected target, on
-  a real automatic run, the blueprint looks up its device and checks
-  whether that device has a linked `device_tracker`: if it does and it's
-  not `home`, that target is skipped; if there's no linked tracker at all
-  (or presence can't be determined), the notification is always sent —
-  it never silently disappears just because presence couldn't be
-  resolved. `notify.send_message` is called with `target: {entity_id:
-  ...}` for each target that passes this check.
+  a real automatic run, the blueprint looks up its device and only sends
+  if that device has a linked `device_tracker` reporting `home`; a target
+  without a linked tracker, or that isn't home, is skipped.
+  `notify.send_message` is called with `target: {entity_id: ...}` for each
+  target that passes this check.
 - **TTS:** If a TTS engine and at least one media player are configured,
   `tts.speak` is played on all selected players.
 - **On-demand testing:** The TTS step and the push step are each their own
@@ -73,7 +71,7 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 | `debounce_minutes` | no (default 5) | Minimum hold duration of the temperature condition |
 | `morning_start` / `morning_end` | no (05:00–11:00) | Time window for "close" |
 | `evening_start` / `evening_end` | no (18:00–23:59) | Time window for "open" |
-| `notify_targets` | no | Notify entities to send push notifications to |
+| `notify_targets` | no | Notify entities to send push notifications to (only while their linked device is home) |
 | `tts_engine` / `tts_media_players` | no | TTS announcement target |
 | `window_sensors` | no | Window/door contacts for plausibility checking |
 | `notify_title`, `message_close`, `message_open` | no | Customizable texts |
@@ -87,12 +85,13 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   `notify.mobile_app_<name>` service). If your phone doesn't show up when
   picking `notify_targets`, check under *Settings → Devices & Services →
   Entities* (filter: "notify") whether it has such an entity yet.
-- Presence-gating is best-effort: it only skips a target on a real
-  automatic run if that target's device has a `device_tracker` reporting
-  something other than `home`. If a target's device has no linked
-  `device_tracker`, or the device registry doesn't link it the way you'd
-  expect, the notification is sent regardless of presence (favoring "send
-  anyway" over silently dropping it).
+- Presence-gating requires a `device_tracker` linked to the target's
+  device that reports `home`. On a real automatic run, a target is
+  skipped whenever no such tracker is found — including if the device
+  registry doesn't link one the way you'd expect. If push isn't arriving,
+  check under *Settings → Devices & Services → Devices* that the target's
+  device has an associated `device_tracker` entity and that it correctly
+  shows `home` while you're there.
 - No `input_boolean`/helper is required; if Home Assistant restarts while
   the temperature condition is already met, the trigger may fire again
   depending on the remaining `for:` state (standard behavior of template

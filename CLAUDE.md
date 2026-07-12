@@ -99,13 +99,16 @@ reminder) and apply to future blueprints with similar needs:
      through device_trackers at all.
   If you still want "only notify while present" semantics without asking
   the user to separately pick a person, derive presence the *other*
-  direction as a best-effort secondary check: from the selected notify
-  entity, `device_id(entity)` → `device_entities(device_id)` → look for a
+  direction as a secondary check: from the selected notify entity,
+  `device_id(entity)` → `device_entities(device_id)` → look for a
   `device_tracker.*` entity among them → check `is_state(tracker, 'home')`.
-  Default to **sending anyway** if no tracker is found for that device
-  (never let an unresolvable presence check silently swallow a
-  notification) — see the `notify_targets` template in `lueften.yaml`'s
-  "Send push notification" action for the reference implementation.
+  In `lueften`, the user explicitly wants this to be a strict allow-list:
+  only send if a `device_tracker` is found **and** it reports `home` —
+  no tracker (or not home) means skip. This was a deliberate reversal of
+  our first instinct (default to sending when presence can't be
+  determined) — don't "fix" it back without asking; see the
+  `notify_targets` template in `lueften.yaml`'s "Send push notification"
+  action for the reference implementation.
 - **Arbitrary number of push recipients:** use a single multi-select
   entity selector (see above) rather than a fixed number of "slots".
 - **On-demand testing without extra helper entities:** give the

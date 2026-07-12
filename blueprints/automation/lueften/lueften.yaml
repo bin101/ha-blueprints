@@ -7,11 +7,10 @@ blueprint:
 
     The announcement can go out as a **TTS message** on any number of media
     players and/or as a **push notification** to any number of directly
-    selected notify targets (e.g. notify.mobile_app_yourphone) - skipped
-    automatically for a target while its linked device is detected as away,
-    if such a link exists. Window sensors are optional: if configured,
-    "close" is only announced when at least one window is open, and "open"
-    only when at least one is closed.
+    selected notify targets (e.g. notify.mobile_app_yourphone) - sent only
+    to targets whose linked device is detected as "home". Window sensors
+    are optional: if configured, "close" is only announced when at least
+    one window is open, and "open" only when at least one is closed.
 
     The TTS and push steps are each their own named action in the
     sequence, so you can test either one on demand straight from the
@@ -123,11 +122,11 @@ blueprint:
           description: >
             Any number of notify entities to send push notifications to
             (e.g. notify.mobile_app_yourphone - pick them directly from the
-            list, no need to know the exact entity ID). If a target's
-            device has a linked device_tracker, the notification is only
-            sent while that device is "home"; targets without a linked
-            tracker (or where presence can't be determined) always
-            receive it. Leave empty to send no push notifications.
+            list, no need to know the exact entity ID). A target only
+            receives the notification if its device has a device_tracker
+            that reports "home" - targets without a linked tracker, or
+            that aren't home, are skipped. Leave empty to send no push
+            notifications.
           default: []
           selector:
             entity:
@@ -338,27 +337,24 @@ action:
               # Notify targets are picked directly (no guessing a service
               # name, no relying on a person's device_trackers to find the
               # right device). For a real automatic run, a target is only
-              # skipped if its device has a device_tracker that is *not*
-              # "home" - if there's no tracker at all, or presence can't be
-              # determined, it's always sent. A manual test run (no
-              # trigger context) always sends to every configured target.
+              # sent to if its device has a device_tracker that reports
+              # "home" - no tracker found, or not home, means it's skipped.
+              # A manual test run (no trigger context) always sends to
+              # every configured target regardless of presence.
               notify_targets: >
                 {% if trigger is defined and trigger.id in ['close', 'open'] %}
                   {% set ns = namespace(targets=[]) %}
                   {% for nt in notify_targets_input %}
-                    {% set trk = namespace(found=false, home=false) %}
+                    {% set trk = namespace(home=false) %}
                     {% set did = device_id(nt) %}
                     {% if did %}
                       {% for e in device_entities(did) %}
-                        {% if e.startswith('device_tracker.') %}
-                          {% set trk.found = true %}
-                          {% if is_state(e, 'home') %}
-                            {% set trk.home = true %}
-                          {% endif %}
+                        {% if e.startswith('device_tracker.') and is_state(e, 'home') %}
+                          {% set trk.home = true %}
                         {% endif %}
                       {% endfor %}
                     {% endif %}
-                    {% if not trk.found or trk.home %}
+                    {% if trk.home %}
                       {% set ns.targets = ns.targets + [nt] %}
                     {% endif %}
                   {% endfor %}

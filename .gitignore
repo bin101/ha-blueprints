@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Python (local lint tooling / venvs)
+__pycache__/
+*.pyc
+.venv/
+venv/

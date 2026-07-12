@@ -1,0 +1,312 @@
+blueprint:
+  name: "Airing Reminder – Open/Close Windows (Summer Cooling)"
+  description: >
+    Announces **once in the morning** when windows should be closed
+    (outside is warmer than inside), and **once in the evening** when they
+    should be opened to air out the house (outside is cooler than inside).
+
+    The announcement can go out as a **TTS message** on any number of media
+    players and/or as a **push notification** to the Home Assistant app of
+    every selected person who is currently home. Window sensors are
+    optional: if configured, "close" is only announced when at least one
+    window is open, and "open" only when at least one is closed.
+
+    Full documentation: see the README.md next to this blueprint.
+  domain: automation
+  source_url: https://github.com/bin101/ha-blueprints/blob/main/blueprints/automation/lueften/lueften.yaml
+  input:
+    temp_section:
+      name: Temperature
+      icon: mdi:thermometer
+      input:
+        indoor_temp:
+          name: Indoor temperature sensor
+          description: Temperature sensor measuring the indoor temperature.
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        outdoor_temp:
+          name: Outdoor temperature sensor
+          description: Temperature sensor measuring the outdoor temperature.
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        hysteresis:
+          name: Hysteresis
+          description: >
+            Buffer in °C by which the outdoor temperature must exceed/fall
+            below the indoor temperature before triggering. Prevents
+            "flapping" when both temperatures are nearly equal.
+          default: 1.0
+          selector:
+            number:
+              min: 0
+              max: 10
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+        min_indoor_open:
+          name: Minimum indoor temperature to open
+          description: >
+            In the evening, "open windows" is only announced if the indoor
+            temperature is above this value. Avoids announcements on cool
+            evenings where airing out wouldn't help anyway.
+          default: 22
+          selector:
+            number:
+              min: 0
+              max: 35
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+        debounce_minutes:
+          name: Minimum hold duration
+          description: >
+            The temperature condition must be continuously met for this many
+            minutes before triggering. Adds extra protection against brief
+            outliers.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+    time_section:
+      name: Time window
+      icon: mdi:clock-outline
+      input:
+        morning_start:
+          name: Morning – start
+          description: "\"Close windows\" may only be announced from this time onward."
+          default: "05:00:00"
+          selector:
+            time: {}
+        morning_end:
+          name: Morning – end
+          description: "\"Close windows\" may only be announced until this time."
+          default: "11:00:00"
+          selector:
+            time: {}
+        evening_start:
+          name: Evening – start
+          description: "\"Open windows\" may only be announced from this time onward."
+          default: "18:00:00"
+          selector:
+            time: {}
+        evening_end:
+          name: Evening – end
+          description: "\"Open windows\" may only be announced until this time."
+          default: "23:59:00"
+          selector:
+            time: {}
+
+    push_section:
+      name: "Notification: Push (optional)"
+      icon: mdi:cellphone-message
+      input:
+        notify_persons:
+          name: Persons to notify via push
+          description: >
+            Push notifications are only sent to the Home Assistant app of
+            the persons selected here, provided they are currently detected
+            as "home". Leave empty to send no push notifications.
+          default: []
+          selector:
+            entity:
+              domain: person
+              multiple: true
+
+    tts_section:
+      name: "Notification: TTS announcement (optional)"
+      icon: mdi:account-voice
+      input:
+        tts_engine:
+          name: TTS engine
+          description: >
+            TTS service/entity used for the voice announcement. Leave empty
+            to skip TTS announcements.
+          default: ""
+          selector:
+            entity:
+              domain: tts
+        tts_media_players:
+          name: Media players for the announcement
+          description: >
+            Any number of media players on which the announcement should be
+            played.
+          default: []
+          selector:
+            entity:
+              domain: media_player
+              multiple: true
+
+    window_section:
+      name: Window sensors (optional)
+      icon: mdi:window-open-variant
+      input:
+        window_sensors:
+          name: Window/door sensors
+          description: >
+            Optional: binary sensors that detect open windows/doors. If set,
+            "close" is only announced while at least one of them is open,
+            and "open" only while at least one is closed. Leave empty to
+            skip this check.
+          default: []
+          selector:
+            entity:
+              domain: binary_sensor
+              multiple: true
+
+    text_section:
+      name: Messages
+      icon: mdi:message-text
+      input:
+        notify_title:
+          name: Notification title
+          default: Airing reminder
+          selector:
+            text: {}
+        message_close:
+          name: "\"Close windows\" message"
+          default: "It's warmer outside than inside – please close the windows."
+          selector:
+            text: {}
+        message_open:
+          name: "\"Open windows\" message"
+          default: "It's cooler outside than inside – please open the windows to air out the house."
+          selector:
+            text: {}
+
+mode: single
+max_exceeded: silent
+
+# Values already needed inside trigger templates must be provided via
+# trigger_variables - regular `variables:` are not yet available there.
+trigger_variables:
+  indoor_temp: !input indoor_temp
+  outdoor_temp: !input outdoor_temp
+  hysteresis: !input hysteresis
+
+trigger:
+  # Fires exactly once when the outdoor temperature crosses the indoor
+  # temperature (plus hysteresis) from below to above -> close windows.
+  - platform: template
+    id: close
+    value_template: >
+      {{ states(indoor_temp) not in ['unknown', 'unavailable', 'none']
+         and states(outdoor_temp) not in ['unknown', 'unavailable', 'none']
+         and states(outdoor_temp) | float >= states(indoor_temp) | float + hysteresis | float }}
+    for:
+      minutes: !input debounce_minutes
+  # Fires exactly once when the outdoor temperature crosses the indoor
+  # temperature (minus hysteresis) from above to below -> open windows.
+  - platform: template
+    id: open
+    value_template: >
+      {{ states(indoor_temp) not in ['unknown', 'unavailable', 'none']
+         and states(outdoor_temp) not in ['unknown', 'unavailable', 'none']
+         and states(outdoor_temp) | float <= states(indoor_temp) | float - hysteresis | float }}
+    for:
+      minutes: !input debounce_minutes
+
+variables:
+  indoor_temp: !input indoor_temp
+  min_indoor_open: !input min_indoor_open
+  window_sensors: !input window_sensors
+  notify_persons: !input notify_persons
+  tts_engine: !input tts_engine
+  tts_media_players: !input tts_media_players
+  # Resolves the mobile_app notify services of all selected persons who are
+  # currently "home". Uses the person entity's device_trackers attribute to
+  # look up, via the device registry, the corresponding mobile_app device
+  # name (and thus the notify service).
+  notify_services: >
+    {% set ns = namespace(svc=[]) %}
+    {% for p in notify_persons %}
+      {% if is_state(p, 'home') %}
+        {% for t in state_attr(p, 'device_trackers') or [] %}
+          {% set did = device_id(t) %}
+          {% if did %}
+            {% set ns.svc = ns.svc +
+               ['notify.mobile_app_' ~ (device_attr(did, 'name') | slugify)] %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.svc | unique | list }}
+
+condition: []
+
+action:
+  - choose:
+      # --- Morning: close windows ---
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'close' }}"
+          - condition: time
+            after: !input morning_start
+            before: !input morning_end
+          - condition: template
+            value_template: >
+              {{ window_sensors | count == 0
+                 or window_sensors | select('is_state', 'on') | list | count > 0 }}
+        sequence:
+          - variables:
+              message: !input message_close
+          - if:
+              - condition: template
+                value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
+            then:
+              - action: tts.speak
+                target:
+                  entity_id: !input tts_engine
+                data:
+                  media_player_entity_id: !input tts_media_players
+                  message: "{{ message }}"
+          - repeat:
+              for_each: "{{ notify_services }}"
+              sequence:
+                - action: "{{ repeat.item }}"
+                  data:
+                    title: !input notify_title
+                    message: "{{ message }}"
+
+      # --- Evening: open windows ---
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'open' }}"
+          - condition: time
+            after: !input evening_start
+            before: !input evening_end
+          - condition: numeric_state
+            entity_id: !input indoor_temp
+            above: !input min_indoor_open
+          - condition: template
+            value_template: >
+              {{ window_sensors | count == 0
+                 or window_sensors | select('is_state', 'off') | list | count > 0 }}
+        sequence:
+          - variables:
+              message: !input message_open
+          - if:
+              - condition: template
+                value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
+            then:
+              - action: tts.speak
+                target:
+                  entity_id: !input tts_engine
+                data:
+                  media_player_entity_id: !input tts_media_players
+                  message: "{{ message }}"
+          - repeat:
+              for_each: "{{ notify_services }}"
+              sequence:
+                - action: "{{ repeat.item }}"
+                  data:
+                    title: !input notify_title
+                    message: "{{ message }}"

@@ -1,0 +1,16 @@
+---
+# yamllint config for this repo's Home Assistant blueprints.
+# Home Assistant blueprints legitimately contain long lines (source_url,
+# folded Jinja templates), so line-length is relaxed rather than disabled.
+extends: default
+
+rules:
+  line-length:
+    max: 130
+    allow-non-breakable-words: true
+  truthy: disable
+  document-start: disable
+  braces:
+    max-spaces-inside: 1
+  comments:
+    min-spaces-from-content: 1

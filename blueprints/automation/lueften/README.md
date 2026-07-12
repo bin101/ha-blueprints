@@ -3,9 +3,10 @@
 Reminds you **once in the morning** to close the windows (outside is warmer
 than inside), and **once in the evening** to open them for airing out
 (outside is cooler than inside). Optionally via TTS announcement on any
-number of media players and/or push notification to all persons who are
-home. Window sensors are optional. Both the TTS and the push step can be
-tested on demand straight from the automation editor.
+number of media players and/or push notification to any number of
+directly selected notify targets. Window sensors are optional. Both the
+TTS and the push step can be tested on demand straight from the automation
+editor.
 
 ## Import
 
@@ -36,13 +37,16 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 - **Window sensors (optional):** If configured, "close" is only announced
   when at least one sensor reports "open", and "open" only when at least
   one reports "closed". Without sensors, this check is skipped.
-- **Push:** From the list of selected `person` entities, all those
-  currently `home` are filtered out. For each of them, every linked
-  `device_tracker` is resolved to its owning device via the device registry
-  (`device_trackers` → `device_id`), and `notify.send_message` is called
-  targeting that `device_id` directly. Any number of persons can be
-  selected, and a person with multiple devices (e.g. phone and tablet) gets
-  notified on all of them.
+- **Push:** You pick the `notify` entities to send to directly (e.g.
+  `notify.mobile_app_yourphone`) — no guessing of service names, no
+  detour through a person's device trackers. For each selected target, on
+  a real automatic run, the blueprint looks up its device and checks
+  whether that device has a linked `device_tracker`: if it does and it's
+  not `home`, that target is skipped; if there's no linked tracker at all
+  (or presence can't be determined), the notification is always sent —
+  it never silently disappears just because presence couldn't be
+  resolved. `notify.send_message` is called with `target: {entity_id:
+  ...}` for each target that passes this check.
 - **TTS:** If a TTS engine and at least one media player are configured,
   `tts.speak` is played on all selected players.
 - **On-demand testing:** The TTS step and the push step are each their own
@@ -52,8 +56,8 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   bypassing every temperature/time condition. Since a manually run action
   has no trigger context, the blueprint falls back to the separate
   `test_message` text, and the push step falls back to notifying *all*
-  configured persons' devices regardless of whether they're currently
-  home (so you can verify delivery even while away). Each of these two
+  configured notify targets regardless of presence (so you can verify
+  delivery even while away). Each of these two
   actions declares everything it needs (message text, notify targets) in
   its *own* `variables:` step, because Home Assistant's per-action "Run"
   test does not carry over variables defined outside the action being
@@ -69,7 +73,7 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 | `debounce_minutes` | no (default 5) | Minimum hold duration of the temperature condition |
 | `morning_start` / `morning_end` | no (05:00–11:00) | Time window for "close" |
 | `evening_start` / `evening_end` | no (18:00–23:59) | Time window for "open" |
-| `notify_persons` | no | Persons who receive a push notification while home |
+| `notify_targets` | no | Notify entities to send push notifications to |
 | `tts_engine` / `tts_media_players` | no | TTS announcement target |
 | `window_sensors` | no | Window/door contacts for plausibility checking |
 | `notify_title`, `message_close`, `message_open` | no | Customizable texts |
@@ -78,17 +82,17 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 ## Known limitations
 
 - Requires Home Assistant **2024.6 or newer**, since push notifications are
-  sent via the generic `notify.send_message` action targeting a
-  `device_id` — this only works for notify targets that have been migrated
-  to notify entities (the `mobile_app` integration was one of the first).
-- Resolving the push target assumes the person's device tracker(s) come
-  from the `mobile_app` integration (i.e. the Home Assistant companion app
-  was installed and set up on that device). With trackers from other
-  sources (e.g. `owntracks`/`gpslogger` without an associated `mobile_app`
-  device), no device is found for that person and nothing gets sent —
-  silently, with no error. In that case, check under *Settings → Devices &
-  Services → Devices* whether the person's tracker(s) belong to a
-  `mobile_app` device.
+  sent via the generic `notify.send_message` action, which needs the
+  target to be exposed as a `notify` entity (not just a legacy
+  `notify.mobile_app_<name>` service). If your phone doesn't show up when
+  picking `notify_targets`, check under *Settings → Devices & Services →
+  Entities* (filter: "notify") whether it has such an entity yet.
+- Presence-gating is best-effort: it only skips a target on a real
+  automatic run if that target's device has a `device_tracker` reporting
+  something other than `home`. If a target's device has no linked
+  `device_tracker`, or the device registry doesn't link it the way you'd
+  expect, the notification is sent regardless of presence (favoring "send
+  anyway" over silently dropping it).
 - No `input_boolean`/helper is required; if Home Assistant restarts while
   the temperature condition is already met, the trigger may fire again
   depending on the remaining `for:` state (standard behavior of template

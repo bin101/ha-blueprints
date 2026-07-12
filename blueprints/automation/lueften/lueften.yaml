@@ -6,10 +6,12 @@ blueprint:
     should be opened to air out the house (outside is cooler than inside).
 
     The announcement can go out as a **TTS message** on any number of media
-    players and/or as a **push notification** to the Home Assistant app of
-    every selected person who is currently home. Window sensors are
-    optional: if configured, "close" is only announced when at least one
-    window is open, and "open" only when at least one is closed.
+    players and/or as a **push notification** to any number of directly
+    selected notify targets (e.g. notify.mobile_app_yourphone) - skipped
+    automatically for a target while its linked device is detected as away,
+    if such a link exists. Window sensors are optional: if configured,
+    "close" is only announced when at least one window is open, and "open"
+    only when at least one is closed.
 
     The TTS and push steps are each their own named action in the
     sequence, so you can test either one on demand straight from the
@@ -116,16 +118,20 @@ blueprint:
       name: "Notification: Push (optional)"
       icon: mdi:cellphone-message
       input:
-        notify_persons:
-          name: Persons to notify via push
+        notify_targets:
+          name: Notify targets
           description: >
-            Push notifications are only sent to the Home Assistant app of
-            the persons selected here, provided they are currently detected
-            as "home". Leave empty to send no push notifications.
+            Any number of notify entities to send push notifications to
+            (e.g. notify.mobile_app_yourphone - pick them directly from the
+            list, no need to know the exact entity ID). If a target's
+            device has a linked device_tracker, the notification is only
+            sent while that device is "home"; targets without a linked
+            tracker (or where presence can't be determined) always
+            receive it. Leave empty to send no push notifications.
           default: []
           selector:
             entity:
-              domain: person
+              domain: notify
               multiple: true
 
     tts_section:
@@ -320,7 +326,7 @@ action:
               message_close: !input message_close
               message_open: !input message_open
               test_message: !input test_message
-              notify_persons: !input notify_persons
+              notify_targets_input: !input notify_targets
               message: >
                 {% if trigger is defined and trigger.id == 'close' %}
                   {{ message_close }}
@@ -329,51 +335,43 @@ action:
                 {% else %}
                   {{ test_message }}
                 {% endif %}
-              # Resolves the mobile_app device(s) of all selected persons
-              # who are currently "home". Targeting by device_id (rather
-              # than guessing a notify.mobile_app_<slug> service name from
-              # the device's display name) is what notify.send_message
-              # expects and avoids mismatches when the device's registered
-              # name doesn't map cleanly to a slug.
-              notify_device_ids: >
-                {% set ns = namespace(devices=[]) %}
-                {% for p in notify_persons %}
-                  {% if is_state(p, 'home') %}
-                    {% for t in state_attr(p, 'device_trackers') or [] %}
-                      {% set did = device_id(t) %}
-                      {% if did %}
-                        {% set ns.devices = ns.devices + [did] %}
-                      {% endif %}
-                    {% endfor %}
-                  {% endif %}
-                {% endfor %}
-                {{ ns.devices | unique | list }}
-              # Same resolution, but without the "home" filter - used for
-              # manual test runs so push also reaches devices of persons
-              # who are currently away.
-              notify_device_ids_all: >
-                {% set ns = namespace(devices=[]) %}
-                {% for p in notify_persons %}
-                  {% for t in state_attr(p, 'device_trackers') or [] %}
-                    {% set did = device_id(t) %}
-                    {% if did %}
-                      {% set ns.devices = ns.devices + [did] %}
-                    {% endif %}
-                  {% endfor %}
-                {% endfor %}
-                {{ ns.devices | unique | list }}
+              # Notify targets are picked directly (no guessing a service
+              # name, no relying on a person's device_trackers to find the
+              # right device). For a real automatic run, a target is only
+              # skipped if its device has a device_tracker that is *not*
+              # "home" - if there's no tracker at all, or presence can't be
+              # determined, it's always sent. A manual test run (no
+              # trigger context) always sends to every configured target.
               notify_targets: >
                 {% if trigger is defined and trigger.id in ['close', 'open'] %}
-                  {{ notify_device_ids }}
+                  {% set ns = namespace(targets=[]) %}
+                  {% for nt in notify_targets_input %}
+                    {% set trk = namespace(found=false, home=false) %}
+                    {% set did = device_id(nt) %}
+                    {% if did %}
+                      {% for e in device_entities(did) %}
+                        {% if e.startswith('device_tracker.') %}
+                          {% set trk.found = true %}
+                          {% if is_state(e, 'home') %}
+                            {% set trk.home = true %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                    {% endif %}
+                    {% if not trk.found or trk.home %}
+                      {% set ns.targets = ns.targets + [nt] %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ ns.targets }}
                 {% else %}
-                  {{ notify_device_ids_all }}
+                  {{ notify_targets_input }}
                 {% endif %}
           - repeat:
               for_each: "{{ notify_targets }}"
               sequence:
                 - action: notify.send_message
                   target:
-                    device_id: "{{ repeat.item }}"
+                    entity_id: "{{ repeat.item }}"
                   data:
                     title: !input notify_title
                     message: "{{ message }}"

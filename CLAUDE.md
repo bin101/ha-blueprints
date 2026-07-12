@@ -82,18 +82,32 @@ for it in that specific instance.
 These came out of building the first blueprint (`lueften` — airing
 reminder) and apply to future blueprints with similar needs:
 
-- **Push notification targeting:** resolve the actual `device_id` from a
-  `person` entity's `device_trackers` attribute (`state_attr(person,
-  'device_trackers')` → `device_id(tracker_entity)`), then call
-  `notify.send_message` with `target: {device_id: ...}`. **Do not** guess a
-  `notify.mobile_app_<slugified_device_name>` service name — device
-  display names don't reliably slugify to the real service/entity id and
-  this breaks in practice.
+- **Push notification targeting: let the user pick `notify` entities
+  directly.** Use an entity selector with `domain: notify` (`multiple:
+  true`) so the user picks real, already-registered notify entities (e.g.
+  `notify.mobile_app_yourphone`) straight from a dropdown, then call
+  `notify.send_message` with `target: {entity_id: ...}`. We went through
+  two worse approaches before landing here — **do not repeat them**:
+  1. Guessing a `notify.mobile_app_<slugified_device_name>` service name
+     from a device's display name — device names don't reliably slugify to
+     the real service/entity id.
+  2. Deriving the target from a `person` entity's `device_trackers`
+     attribute (`state_attr(person, 'device_trackers')` →
+     `device_id(tracker)` → `target: {device_id: ...}`) — this produced no
+     usable IDs at all in practice (device_tracker → device linkage isn't
+     reliable enough to build on), and the user explicitly asked not to go
+     through device_trackers at all.
+  If you still want "only notify while present" semantics without asking
+  the user to separately pick a person, derive presence the *other*
+  direction as a best-effort secondary check: from the selected notify
+  entity, `device_id(entity)` → `device_entities(device_id)` → look for a
+  `device_tracker.*` entity among them → check `is_state(tracker, 'home')`.
+  Default to **sending anyway** if no tracker is found for that device
+  (never let an unresolvable presence check silently swallow a
+  notification) — see the `notify_targets` template in `lueften.yaml`'s
+  "Send push notification" action for the reference implementation.
 - **Arbitrary number of push recipients:** use a single multi-select
-  `person` entity selector rather than a fixed number of "slots". A person
-  with multiple linked devices (phone + tablet, etc.) should receive the
-  notification on all of them — loop over all `device_trackers`, dedupe
-  resolved device ids with `unique`.
+  entity selector (see above) rather than a fixed number of "slots".
 - **On-demand testing without extra helper entities:** give the
   TTS-sending and the push-sending steps their own named actions
   (`alias: Send TTS announcement` / `alias: Send push notification`) as

@@ -11,6 +11,13 @@ blueprint:
     optional: if configured, "close" is only announced when at least one
     window is open, and "open" only when at least one is closed.
 
+    The TTS and push steps are each their own named action in the
+    sequence, so you can test either one on demand straight from the
+    automation editor (open the automation → the action step → **Run**),
+    without setting up any extra helper entities. A manual test run sends
+    to all configured targets (ignoring the "home" presence check for
+    push) using the separate test message below.
+
     Full documentation: see the README.md next to this blueprint.
   domain: automation
   source_url: https://github.com/bin101/ha-blueprints/blob/main/blueprints/automation/lueften/lueften.yaml
@@ -181,6 +188,15 @@ blueprint:
           default: "It's cooler outside than inside – please open the windows to air out the house."
           selector:
             text: {}
+        test_message:
+          name: Test message
+          description: >
+            Used when manually running the "Send TTS announcement" or
+            "Send push notification" action from the automation editor
+            (instead of message_close/message_open).
+          default: This is a test message from the Airing Reminder blueprint.
+          selector:
+            text: {}
 
 mode: single
 max_exceeded: silent
@@ -221,6 +237,9 @@ variables:
   notify_persons: !input notify_persons
   tts_engine: !input tts_engine
   tts_media_players: !input tts_media_players
+  message_close: !input message_close
+  message_open: !input message_open
+  test_message: !input test_message
   # Resolves the mobile_app device(s) of all selected persons who are
   # currently "home". Uses the person entity's device_trackers attribute to
   # look up the owning device via the device registry. Targeting by
@@ -241,78 +260,97 @@ variables:
       {% endif %}
     {% endfor %}
     {{ ns.devices | unique | list }}
+  # Same resolution, but without the "home" filter - used for manual test
+  # runs so push also reaches devices of persons who are currently away.
+  notify_device_ids_all: >
+    {% set ns = namespace(devices=[]) %}
+    {% for p in notify_persons %}
+      {% for t in state_attr(p, 'device_trackers') or [] %}
+        {% set did = device_id(t) %}
+        {% if did %}
+          {% set ns.devices = ns.devices + [did] %}
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+    {{ ns.devices | unique | list }}
+  # `trigger` is only defined when this automation ran because of a real
+  # trigger. Running a single action manually from the editor's "Run"
+  # button executes it in isolation, without a trigger context - that's
+  # how a manual test is told apart from a real close/open run.
+  message: >
+    {% if trigger is defined and trigger.id == 'close' %}
+      {{ message_close }}
+    {% elif trigger is defined and trigger.id == 'open' %}
+      {{ message_open }}
+    {% else %}
+      {{ test_message }}
+    {% endif %}
+  notify_targets: >
+    {% if trigger is defined and trigger.id in ['close', 'open'] %}
+      {{ notify_device_ids }}
+    {% else %}
+      {{ notify_device_ids_all }}
+    {% endif %}
 
 condition: []
 
 action:
-  - choose:
-      # --- Morning: close windows ---
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'close' }}"
-          - condition: time
-            after: !input morning_start
-            before: !input morning_end
-          - condition: template
-            value_template: >
-              {{ window_sensors | count == 0
-                 or window_sensors | select('is_state', 'on') | list | count > 0 }}
-        sequence:
-          - variables:
-              message: !input message_close
-          - if:
+  - if:
+      - condition: or
+        conditions:
+          # Automatic morning run: only within the configured time window
+          # and only while at least one window is (still) open.
+          - condition: and
+            conditions:
               - condition: template
-                value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
-            then:
-              - action: tts.speak
-                target:
-                  entity_id: !input tts_engine
-                data:
-                  media_player_entity_id: !input tts_media_players
-                  message: "{{ message }}"
-          - repeat:
-              for_each: "{{ notify_device_ids }}"
-              sequence:
-                - action: notify.send_message
-                  target:
-                    device_id: "{{ repeat.item }}"
-                  data:
-                    title: !input notify_title
-                    message: "{{ message }}"
-
-      # --- Evening: open windows ---
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'open' }}"
-          - condition: time
-            after: !input evening_start
-            before: !input evening_end
-          - condition: numeric_state
-            entity_id: !input indoor_temp
-            above: !input min_indoor_open
-          - condition: template
-            value_template: >
-              {{ window_sensors | count == 0
-                 or window_sensors | select('is_state', 'off') | list | count > 0 }}
-        sequence:
-          - variables:
-              message: !input message_open
-          - if:
+                value_template: "{{ trigger is defined and trigger.id == 'close' }}"
+              - condition: time
+                after: !input morning_start
+                before: !input morning_end
               - condition: template
-                value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
-            then:
-              - action: tts.speak
-                target:
-                  entity_id: !input tts_engine
-                data:
-                  media_player_entity_id: !input tts_media_players
-                  message: "{{ message }}"
-          - repeat:
-              for_each: "{{ notify_device_ids }}"
-              sequence:
-                - action: notify.send_message
-                  target:
-                    device_id: "{{ repeat.item }}"
-                  data:
-                    title: !input notify_title
-                    message: "{{ message }}"
+                value_template: >
+                  {{ window_sensors | count == 0
+                     or window_sensors | select('is_state', 'on') | list | count > 0 }}
+          # Automatic evening run: only within the configured time window,
+          # only while it's actually warm enough inside, and only while at
+          # least one window is (still) closed.
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ trigger is defined and trigger.id == 'open' }}"
+              - condition: time
+                after: !input evening_start
+                before: !input evening_end
+              - condition: numeric_state
+                entity_id: !input indoor_temp
+                above: !input min_indoor_open
+              - condition: template
+                value_template: >
+                  {{ window_sensors | count == 0
+                     or window_sensors | select('is_state', 'off') | list | count > 0 }}
+          # Manual test run (e.g. via the editor's per-action "Run" button):
+          # no real close/open trigger, so skip all the gating above.
+          - condition: template
+            value_template: "{{ trigger is not defined or trigger.id not in ['close', 'open'] }}"
+    then:
+      - alias: Send TTS announcement
+        if:
+          - condition: template
+            value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
+        then:
+          - action: tts.speak
+            target:
+              entity_id: !input tts_engine
+            data:
+              media_player_entity_id: !input tts_media_players
+              message: "{{ message }}"
+      - alias: Send push notification
+        repeat:
+          for_each: "{{ notify_targets }}"
+          sequence:
+            - action: notify.send_message
+              target:
+                device_id: "{{ repeat.item }}"
+              data:
+                title: !input notify_title
+                message: "{{ message }}"

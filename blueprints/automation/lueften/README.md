@@ -4,7 +4,8 @@ Reminds you **once in the morning** to close the windows (outside is warmer
 than inside), and **once in the evening** to open them for airing out
 (outside is cooler than inside). Optionally via TTS announcement on any
 number of media players and/or push notification to all persons who are
-home. Window sensors are optional.
+home. Window sensors are optional. Both the TTS and the push step can be
+tested on demand straight from the automation editor.
 
 ## Import
 
@@ -44,6 +45,15 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   notified on all of them.
 - **TTS:** If a TTS engine and at least one media player are configured,
   `tts.speak` is played on all selected players.
+- **On-demand testing:** The TTS step and the push step are each their own
+  named action ("Send TTS announcement" / "Send push notification") in the
+  sequence — no helper entities required. Open the automation, find either
+  action, and use its **Run** button (⋮ menu) to fire it immediately,
+  bypassing every temperature/time condition. Since a manually run action
+  has no trigger context, the blueprint falls back to the separate
+  `test_message` text, and the push step falls back to notifying *all*
+  configured persons' devices regardless of whether they're currently
+  home (so you can verify delivery even while away).
 
 ## Inputs
 
@@ -59,6 +69,7 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 | `tts_engine` / `tts_media_players` | no | TTS announcement target |
 | `window_sensors` | no | Window/door contacts for plausibility checking |
 | `notify_title`, `message_close`, `message_open` | no | Customizable texts |
+| `test_message` | no | Message text used when manually running the TTS/push action for testing |
 
 ## Known limitations
 
@@ -85,7 +96,9 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
    fields.
 2. In *Developer Tools → Template*, check both trigger templates against
    current sensor values.
-3. Run the automation once manually via *"Run"* (this skips trigger
-   conditions but still evaluates the `choose` conditions and actions).
+3. Open the automation in the editor and run the "Send TTS announcement"
+   and "Send push notification" actions individually (⋮ → **Run**) to
+   confirm TTS and push each reach their targets, independent of the
+   current temperature/time.
 4. Observe over a day or two (via automation traces) that only one
    announcement occurs per half-day.

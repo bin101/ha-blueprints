@@ -108,6 +108,22 @@ reminder) and apply to future blueprints with similar needs:
   a manual per-action test run, and fall back sensibly (e.g. push ignores
   the "home" presence filter on a manual test run, so delivery can be
   verified while away).
+- **Critical gotcha with per-action testing:** Home Assistant's per-action
+  "Run" test (editor → action → ⋮ → Run) does **not** carry over
+  `variables:` defined outside the action being run — only a top-level
+  automation `variables:` block or an earlier sibling action's variables
+  don't exist during that isolated test (see [Testing and troubleshooting
+  automations](https://www.home-assistant.io/docs/automation/troubleshooting/)).
+  We initially computed `message`/`notify_targets` etc. once in the
+  top-level `variables:` block, and the push action silently sent to zero
+  devices whenever tested via the per-action Run button (empty
+  `for_each`, no error). The fix: give every individually-testable action
+  its **own** `variables:` step as the first item of its own `sequence:`,
+  re-declaring anything it needs via `!input` (duplication across actions
+  is the acceptable trade-off here, not a mistake to "clean up"). Only put
+  something in the shared top-level `variables:` block if it's *only*
+  used by conditions/actions that are never meant to be run in isolation
+  (e.g. the outer gate that decides whether to run at all).
 - **"Once per period" without helpers:** use template triggers on genuine
   state transitions (e.g. outdoor temp crossing indoor temp ± hysteresis)
   combined with a `for:` debounce, instead of `input_boolean` helpers to

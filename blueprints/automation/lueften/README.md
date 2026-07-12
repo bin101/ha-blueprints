@@ -53,7 +53,11 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   has no trigger context, the blueprint falls back to the separate
   `test_message` text, and the push step falls back to notifying *all*
   configured persons' devices regardless of whether they're currently
-  home (so you can verify delivery even while away).
+  home (so you can verify delivery even while away). Each of these two
+  actions declares everything it needs (message text, notify targets) in
+  its *own* `variables:` step, because Home Assistant's per-action "Run"
+  test does not carry over variables defined outside the action being
+  run — see [Testing and troubleshooting automations](https://www.home-assistant.io/docs/automation/troubleshooting/).
 
 ## Inputs
 

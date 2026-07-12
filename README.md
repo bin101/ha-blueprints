@@ -7,14 +7,18 @@ imported directly into Home Assistant via an import link.
 
 ## Available blueprints
 
-### [Airing Reminder – Open/Close Windows](blueprints/automation/lueften/README.md) (automation)
+### [Airing Reminder – Open/Close Windows](blueprints/automation/lueften/README.md) (automation) — v1.0.0
 
 Announces once in the morning to close the windows and once in the evening
 to open them, based on indoor/outdoor temperature. Optional TTS
-announcements on any number of media players, push notifications to
-persons who are home, and optional window sensors for plausibility
-checking. See the [blueprint's README](blueprints/automation/lueften/README.md)
-for all inputs and details.
+announcements (time-window-restricted) on any number of media players,
+push notifications (not time-restricted) to directly selected notify
+targets while their linked device is home, and optional window sensors
+for plausibility checking. See the
+[blueprint's README](blueprints/automation/lueften/README.md) for all
+inputs and details, and its
+[CHANGELOG](blueprints/automation/lueften/CHANGELOG.md) for version
+history.
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fbin101%2Fha-blueprints%2Fmain%2Fblueprints%2Fautomation%2Flueften%2Flueften.yaml)
 

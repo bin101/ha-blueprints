@@ -1,6 +1,10 @@
 blueprint:
   name: "Airing Reminder – Open/Close Windows (Summer Cooling)"
   description: >
+    **Version:** 1.0.0 - see
+    [CHANGELOG](https://github.com/bin101/ha-blueprints/blob/main/blueprints/automation/lueften/CHANGELOG.md)
+    for version history.
+
     Announces **once in the morning** when windows should be closed
     (outside is warmer than inside), and **once in the evening** when they
     should be opened to air out the house (outside is cooler than inside).

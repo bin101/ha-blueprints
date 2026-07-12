@@ -1,5 +1,7 @@
 # Airing Reminder – Open/Close Windows (Summer Cooling)
 
+**Current version:** 1.0.0 ([CHANGELOG](CHANGELOG.md))
+
 Reminds you **once in the morning** to close the windows (outside is warmer
 than inside), and **once in the evening** to open them for airing out
 (outside is cooler than inside). Optionally via TTS announcement on any

@@ -33,6 +33,56 @@ input `name`s/`description`s, and default message texts (e.g.
 `message_close`, `notify_title`). Inline YAML comments should be English
 too. Do not leave German text in any committed file.
 
+## Versioning: per-blueprint SemVer, driven by Conventional Commits
+
+Each blueprint is versioned **independently** (not the repo as a whole) —
+they're imported and used independently, so a change to one blueprint
+should not bump another's version. `lueften` started at **1.0.0** on
+2026-07-12, covering the feature set at that point (temperature-based
+reminders, TTS + push, optional window sensors, independent TTS/push
+gating, per-action on-demand testing). Every new blueprint added to this
+repo starts its own version at `1.0.0` the same way.
+
+**Conventional Commits determine the version bump.** Every commit that
+touches a blueprint's files must use a
+[Conventional Commits](https://www.conventionalcommits.org/) type; scope
+the commit to the blueprint when relevant (e.g. `fix(lueften): ...`):
+- `fix:` → **patch** bump (1.0.0 → 1.0.1)
+- `feat:` → **minor** bump (1.0.0 → 1.1.0)
+- A `!` after the type/scope, or a `BREAKING CHANGE:` footer → **major**
+  bump (1.0.0 → 2.0.0) — e.g. removing/renaming an input, or changing an
+  input's meaning in a way that breaks existing configured automations.
+- `docs:`, `chore:`, `refactor:`, `style:`, `test:`, `ci:` → **no version
+  bump** on their own (only if bundled with an actual `feat`/`fix`/
+  breaking change in the same unit of work).
+
+**Where the version is surfaced** — update all of these together on every
+version-worthy change:
+1. The blueprint's own `blueprint.description` in its `.yaml`, as the
+   first line: `**Version:** x.y.z - see [CHANGELOG](...)`. This is what
+   Home Assistant renders in the blueprint's config/info card in the UI
+   when a user views or sets up an automation from it — this satisfies
+   "show the version in the Blueprint UI".
+2. The blueprint's own `CHANGELOG.md` (next to its `.yaml`/`README.md`),
+   following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+   format — add a new `## [x.y.z] - YYYY-MM-DD` section with
+   Added/Changed/Fixed/Removed subheadings as appropriate.
+3. The blueprint's own `README.md` — a `**Current version:** x.y.z
+   ([CHANGELOG](CHANGELOG.md))` line near the top.
+4. The root `README.md`'s per-blueprint section heading (e.g. `... — v1.0.0`).
+
+**After committing a version-worthy change, tag it**: an annotated tag
+named `<blueprint-name>-v<version>` (e.g. `lueften-v1.0.0`), not a bare
+`v1.0.0`, since multiple blueprints share this repo and their versions
+are independent. Push tags with `git push origin <tag-name>`.
+
+There is currently **no CI enforcement** of Conventional Commits format or
+automated version bumping/tagging — this is a manually-applied convention
+(by whoever/whatever is committing, including Claude), not a bot-checked
+one. If asked to add enforcement later (e.g. a commit-message lint step in
+`.github/workflows/validate.yml`), that's a deliberate scope expansion,
+not something to assume already exists.
+
 ## Root README requirements
 
 The root `README.md` is the entry point on GitHub and must, for every

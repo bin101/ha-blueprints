@@ -5,11 +5,13 @@ on:
     paths:
       - "blueprints/**"
       - ".yamllint.yml"
+      - "scripts/validate_blueprints.py"
       - ".github/workflows/validate.yml"
   pull_request:
     paths:
       - "blueprints/**"
       - ".yamllint.yml"
+      - "scripts/validate_blueprints.py"
       - ".github/workflows/validate.yml"
 
 jobs:
@@ -71,3 +73,21 @@ jobs:
 
           sys.exit(1 if failed else 0)
           EOF
+
+  ha-schema-check:
+    name: Validate against Home Assistant's own schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Home Assistant pins a recent-but-not-bleeding-edge Python.
+          python-version: "3.13"
+
+      - name: Install Home Assistant
+        run: pip install --quiet homeassistant
+
+      - name: Validate blueprints with HA schemas
+        run: python3 scripts/validate_blueprints.py blueprints/

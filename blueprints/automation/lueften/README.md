@@ -1,6 +1,6 @@
 # Airing Reminder – Open/Close Windows (Summer Cooling)
 
-**Current version:** 1.0.2 ([CHANGELOG](CHANGELOG.md))
+**Current version:** 1.0.3 ([CHANGELOG](CHANGELOG.md))
 
 Reminds you **once in the morning** to close the windows (outside is warmer
 than inside), and **once in the evening** to open them for airing out
@@ -32,6 +32,12 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   Home Assistant restart or a temperature crossing. Once the loop is
   running, every further start is silently dropped (`mode: single` +
   `max_exceeded: silent`).
+- **Initial state:** On its first pass the loop checks the current
+  outdoor-vs-indoor temperature. If it is already cooler outside than
+  inside (open threshold met), it skips the "close" half that one time and
+  announces "open" immediately — so a start in the evening tells you to
+  open the windows now instead of waiting for the next morning's "close".
+  Warmer/equal or mid-range starts run the normal close-first cycle.
 - **Alternation (why you no longer get duplicates):** The loop runs "wait
   for the close threshold → announce close → wait for the open threshold →
   announce open" in that fixed order, forever. After announcing "close" it
@@ -116,12 +122,12 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   the running wait loop, so it does not survive a Home Assistant restart or
   an automation reload: after one, the loop relaunches (on `homeassistant
   start`, or within ~10 minutes via the `time_pattern` safety net) and
-  always begins by waiting for the *close* threshold. If a restart happens
-  between the evening "open" and the next morning's "close", the first
-  "open" it would have announced that following evening is skipped once —
-  normal alternation resumes from the next "close". This is a deliberate
-  trade-off for staying helper-free; it never causes a *duplicate*
-  notification, only (rarely, right after a restart) one skipped one.
+  re-checks the current outdoor-vs-indoor temperature to pick the side it
+  starts on. The one remaining edge is a restart while in the mid-range
+  deadband that then cools past the open threshold *without* first warming
+  past close: that single "open" can be skipped until the next cycle. This
+  is a deliberate trade-off for staying helper-free; it never causes a
+  *duplicate* notification, only (rarely) one skipped one.
 - Because the loop is a long-running action that waits on `wait_template`,
   the automation shows as *running* in Home Assistant essentially all the
   time — that is expected, not a stuck run.

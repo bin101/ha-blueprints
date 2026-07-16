@@ -4,6 +4,18 @@ All notable changes to this blueprint are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this blueprint follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-07-16
+
+### Fixed
+
+- The wait loop now checks the current outdoor-vs-indoor temperature on its
+  first pass instead of always starting by waiting for the "close"
+  threshold. If it is already cooler outside than inside (open threshold
+  met) when the loop starts — e.g. after a restart or fresh setup in the
+  evening — it announces "open" straight away rather than waiting until the
+  next morning's "close". Warmer/equal or mid-range starts are unchanged
+  (normal close-first cycle), and alternation is still guaranteed.
+
 ## [1.0.2] - 2026-07-16
 
 ### Fixed

@@ -103,11 +103,32 @@ Run before every commit that touches `blueprints/**`:
 yamllint -c .yamllint.yml blueprints/
 ```
 
-This mirrors the `.github/workflows/validate.yml` CI job (yamllint +
+This mirrors the first `.github/workflows/validate.yml` CI job (yamllint +
 a Python parse-check that registers a `!input` YAML constructor, since
 plain YAML parsers don't know that Home Assistant tag). If `pyyaml`/
 `yamllint` aren't installed, use an isolated venv rather than touching
 system Python (`python3 -m venv /tmp/ha_lint_venv && /tmp/ha_lint_venv/bin/pip install pyyaml yamllint`).
+
+**Deeper (recommended for action/trigger logic changes):**
+`scripts/validate_blueprints.py` validates each blueprint against Home
+Assistant's *own* schemas — it loads the blueprint metadata schema,
+substitutes auto-generated dummy inputs (derived from each input's
+selector), and runs the resulting automation's triggers/conditions/actions
+through HA's `TRIGGER_SCHEMA`/`CONDITION_SCHEMA`/`SCRIPT_SCHEMA`. This
+catches structural mistakes the plain parse-check cannot — e.g. an action
+step that illegally mixes `variables:` with `if:`/`then:` (the exact bug
+that shipped in `lueften` 1.0.1 and only surfaced when HA tried to load the
+automation). It needs the `homeassistant` package, which pins Python
+`<= 3.13`:
+
+```bash
+python3.13 -m venv /tmp/ha_schema_venv
+/tmp/ha_schema_venv/bin/pip install homeassistant
+/tmp/ha_schema_venv/bin/python scripts/validate_blueprints.py blueprints/
+```
+
+The `ha-schema-check` CI job runs exactly this. Run it locally whenever you
+touch a blueprint's `trigger`/`condition`/`action` structure.
 
 ## Git commits require GPG signing via a hardware token — do not use subshells
 

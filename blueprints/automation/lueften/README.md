@@ -1,6 +1,6 @@
 # Airing Reminder – Open/Close Windows (Summer Cooling)
 
-**Current version:** 1.0.1 ([CHANGELOG](CHANGELOG.md))
+**Current version:** 1.0.2 ([CHANGELOG](CHANGELOG.md))
 
 Reminds you **once in the morning** to close the windows (outside is warmer
 than inside), and **once in the evening** to open them for airing out
@@ -25,19 +25,24 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
 
 ## How it works
 
-- **Trigger & alternation:** Two template triggers compare outdoor and
-  indoor temperature. "Close" fires when the outdoor temperature crosses
-  the indoor temperature (plus hysteresis) from below to above; "Open"
-  fires when it crosses it (minus hysteresis) from above to below. The
-  required hold duration (`for:`) prevents brief outliers from triggering
-  it. These triggers only ever *start* a single self-sustaining wait loop,
-  which then drives itself: it announces "close", then blocks waiting for
-  the "open" threshold before it can announce "close" again — and vice
-  versa. So announcements strictly **alternate** close → open → close and
-  the same reminder is never sent twice in a row, even if the sensor flaps
-  repeatedly around one threshold (the redundant triggers are dropped by
-  `mode: single` while the loop is waiting). No helper entities are needed
-  — the loop's position *is* the memory of which side was announced last.
+- **How it starts:** The automation only needs to kick off a single,
+  self-sustaining wait loop. It does so on `homeassistant start` and, as a
+  safety net, every 10 minutes (`time_pattern`) — so a freshly created or
+  reloaded automation begins running on its own, without waiting for a
+  Home Assistant restart or a temperature crossing. Once the loop is
+  running, every further start is silently dropped (`mode: single` +
+  `max_exceeded: silent`).
+- **Alternation (why you no longer get duplicates):** The loop runs "wait
+  for the close threshold → announce close → wait for the open threshold →
+  announce open" in that fixed order, forever. After announcing "close" it
+  is *blocked* waiting for the open threshold (outdoor a full 2× hysteresis
+  below indoor) before it can loop back and announce "close" again — and
+  vice versa. So announcements strictly **alternate** close → open → close
+  and the same reminder is never sent twice in a row, even if the sensor
+  flaps repeatedly around one threshold. No helper entities are needed —
+  the loop's position *is* the memory of which side was announced last.
+  Each wait re-checks the condition after the configured hold duration
+  (`debounce_minutes`), so a brief outlier doesn't count.
 - **Time window (TTS only):** The TTS announcement additionally respects
   the configured morning/evening windows, so that, for example, a
   temperature drop in the middle of the night doesn't trigger a spoken
@@ -109,20 +114,25 @@ https://raw.githubusercontent.com/bin101/ha-blueprints/main/blueprints/automatio
   shows `home` while you're there.
 - No `input_boolean`/helper is required. The alternation memory lives in
   the running wait loop, so it does not survive a Home Assistant restart or
-  an automation reload: after a restart the loop relaunches and always
-  begins by waiting for the *close* threshold. If a restart happens between
-  the evening "open" and the next morning's "close", the first "open" it
-  would have announced that following evening is skipped once — normal
-  alternation resumes from the next "close". This is a deliberate trade-off
-  for staying helper-free; it never causes a *duplicate* notification, only
-  (rarely, right after a restart) one skipped one.
+  an automation reload: after one, the loop relaunches (on `homeassistant
+  start`, or within ~10 minutes via the `time_pattern` safety net) and
+  always begins by waiting for the *close* threshold. If a restart happens
+  between the evening "open" and the next morning's "close", the first
+  "open" it would have announced that following evening is skipped once —
+  normal alternation resumes from the next "close". This is a deliberate
+  trade-off for staying helper-free; it never causes a *duplicate*
+  notification, only (rarely, right after a restart) one skipped one.
+- Because the loop is a long-running action that waits on `wait_template`,
+  the automation shows as *running* in Home Assistant essentially all the
+  time — that is expected, not a stuck run.
 
 ## Verification after import
 
 1. Create an automation from the blueprint and fill in all required
    fields.
-2. In *Developer Tools → Template*, check both trigger templates against
-   current sensor values.
+2. In *Developer Tools → Template*, sanity-check the loop's threshold
+   expressions (outdoor ≥ indoor + hysteresis for "close", outdoor ≤
+   indoor − hysteresis for "open") against current sensor values.
 3. Open the automation in the editor and run the individual "Send TTS
    announcement (…)" and "Send push notification (…)" steps (⋮ → **Run**)
    to confirm TTS and push each reach their targets, independent of the

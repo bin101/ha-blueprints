@@ -7,7 +7,7 @@ imported directly into Home Assistant via an import link.
 
 ## Available blueprints
 
-### [Airing Reminder – Open/Close Windows](blueprints/automation/lueften/README.md) (automation) — v1.0.1
+### [Airing Reminder – Open/Close Windows](blueprints/automation/lueften/README.md) (automation) — v1.0.2
 
 Announces once in the morning to close the windows and once in the evening
 to open them, based on indoor/outdoor temperature. Announcements strictly

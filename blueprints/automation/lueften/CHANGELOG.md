@@ -4,6 +4,23 @@ All notable changes to this blueprint are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this blueprint follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-07-16
+
+### Fixed
+
+- Automation failed to set up in Home Assistant ("extra keys not allowed
+  ... ['if'] / ['then']"): the 1.0.1 send steps illegally combined a
+  `variables:` key with `if:`/`then:` in the same action step. Each send
+  step is now a `sequence:` whose first item declares its own variables,
+  with the gate and the send as separate sub-steps - valid, and still
+  individually testable via the editor's per-action **Run** button.
+- A freshly created (or reloaded) automation now starts its wait loop on
+  its own: the old template triggers only fired on a threshold *crossing*,
+  so an automation set up while the condition was already met (and with no
+  Home Assistant restart) never started. Triggers are now `homeassistant
+  start` plus a 10-minute `time_pattern` safety net; the loop itself does
+  all the temperature detection and debouncing via `wait_template`.
+
 ## [1.0.1] - 2026-07-16
 
 ### Fixed

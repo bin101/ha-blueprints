@@ -1,23 +1,29 @@
 blueprint:
   name: "Airing Reminder – Open/Close Windows (Summer Cooling)"
   description: >
-    **Version:** 1.0.0 - see
+    **Version:** 1.0.1 - see
     [CHANGELOG](https://github.com/bin101/ha-blueprints/blob/main/blueprints/automation/lueften/CHANGELOG.md)
     for version history.
 
-    Announces **once in the morning** when windows should be closed
-    (outside is warmer than inside), and **once in the evening** when they
-    should be opened to air out the house (outside is cooler than inside).
+    Announces when windows should be **closed** (outside is warmer than
+    inside) and when they should be **opened** to air out the house
+    (outside is cooler than inside). Announcements strictly **alternate**
+    close -> open -> close: the same reminder is never sent twice in a row.
+    Once "close" has been announced, an "open" must happen before "close"
+    can be announced again (and vice versa), so brief sensor flapping
+    around a single threshold can no longer produce several identical
+    notifications in one day. This is achieved **without any helper
+    entities** - a self-sustaining wait loop remembers which side was last
+    announced.
 
     The announcement can go out as a **TTS message** on any number of media
     players (only within the configured morning/evening time window)
     and/or as a **push notification** to any number of directly selected
     notify targets (e.g. notify.mobile_app_yourphone) - sent only to
     targets whose linked device is detected as "home", with **no time
-    restriction**, so it always goes out whenever the underlying
-    temperature/window condition is met. Window sensors are optional: if
-    configured, "close" is only announced when at least one window is
-    open, and "open" only when at least one is closed.
+    restriction**. Window sensors are optional: if configured, "close" is
+    only announced when at least one window is open, and "open" only when
+    at least one is closed.
 
     The TTS and push steps are each their own named action in the
     sequence, so you can test either one on demand straight from the
@@ -231,8 +237,17 @@ trigger_variables:
   hysteresis: !input hysteresis
 
 trigger:
-  # Fires exactly once when the outdoor temperature crosses the indoor
-  # temperature (plus hysteresis) from below to above -> close windows.
+  # These triggers only ever *start* the self-sustaining loop below. Once
+  # it is running it drives itself (it waits for the next threshold on its
+  # own), so any further trigger that fires while it is already running is
+  # dropped by `mode: single` + `max_exceeded: silent`. That dropping is
+  # exactly what stops a flapping sensor from sending the same reminder
+  # several times: repeated "close" fires are ignored while the loop is
+  # already waiting for the "open" threshold.
+  - platform: homeassistant
+    event: start
+  # Fires when the outdoor temperature crosses the indoor temperature
+  # (plus hysteresis) from below to above -> close windows.
   - platform: template
     id: close
     value_template: >
@@ -241,8 +256,8 @@ trigger:
          and states(outdoor_temp) | float >= states(indoor_temp) | float + hysteresis | float }}
     for:
       minutes: !input debounce_minutes
-  # Fires exactly once when the outdoor temperature crosses the indoor
-  # temperature (minus hysteresis) from above to below -> open windows.
+  # Fires when the outdoor temperature crosses the indoor temperature
+  # (minus hysteresis) from above to below -> open windows.
   - platform: template
     id: open
     value_template: >
@@ -252,168 +267,245 @@ trigger:
     for:
       minutes: !input debounce_minutes
 
+# Used by the wait loop below (not by the individually-testable send
+# actions - those re-declare everything they need themselves, see comments).
 variables:
-  # Shared by both actions' own gate conditions below. Everything else
-  # each action needs is declared *inside* it (see comments further down)
-  # so that each one is self-sufficient when run individually.
-  window_sensors: !input window_sensors
+  indoor_temp: !input indoor_temp
+  outdoor_temp: !input outdoor_temp
+  hysteresis: !input hysteresis
 
 condition: []
 
 action:
-  # TTS and push are two independent top-level actions, each with its own
-  # gate, rather than one shared gate wrapping both - push is intentionally
-  # NOT time-restricted (see its gate below), only TTS is.
-  - alias: Send TTS announcement
-    if:
-      - condition: or
-        conditions:
-          # Automatic morning run: only within the configured time window
-          # and only while at least one window is (still) open.
-          - condition: and
-            conditions:
-              - condition: template
-                value_template: "{{ trigger is defined and trigger.id == 'close' }}"
-              - condition: time
-                after: !input morning_start
-                before: !input morning_end
-              - condition: template
-                value_template: >
-                  {{ window_sensors | count == 0
-                     or window_sensors | select('is_state', 'on') | list | count > 0 }}
-          # Automatic evening run: only within the configured time window,
-          # only while it's actually warm enough inside, and only while at
-          # least one window is (still) closed.
-          - condition: and
-            conditions:
-              - condition: template
-                value_template: "{{ trigger is defined and trigger.id == 'open' }}"
-              - condition: time
-                after: !input evening_start
-                before: !input evening_end
-              - condition: numeric_state
-                entity_id: !input indoor_temp
-                above: !input min_indoor_open
-              - condition: template
-                value_template: >
-                  {{ window_sensors | count == 0
-                     or window_sensors | select('is_state', 'off') | list | count > 0 }}
-          # Manual test run (e.g. via the editor's per-action "Run" button):
-          # no real close/open trigger, so skip all the gating above.
-          - condition: template
-            value_template: "{{ trigger is not defined or trigger.id not in ['close', 'open'] }}"
-    then:
-      # Declares its own `variables:` instead of relying on a shared block.
-      # Home Assistant's per-action "Run" test (editor -> action -> Run)
-      # does not carry over variables from outside the action being run,
-      # only from within it - so anything needed here must be
-      # self-contained or the test silently does nothing. See:
-      # https://www.home-assistant.io/docs/automation/troubleshooting/
-      - variables:
-          message_close: !input message_close
-          message_open: !input message_open
-          test_message: !input test_message
-          tts_engine: !input tts_engine
-          tts_media_players: !input tts_media_players
-          # `trigger` is only defined for a real close/open run. A manual
-          # per-action test run has no trigger context, so it falls back
-          # to test_message.
-          message: >
-            {% if trigger is defined and trigger.id == 'close' %}
-              {{ message_close }}
-            {% elif trigger is defined and trigger.id == 'open' %}
-              {{ message_open }}
-            {% else %}
-              {{ test_message }}
-            {% endif %}
-      - if:
-          - condition: template
-            value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
-        then:
-          - action: tts.speak
-            target:
-              entity_id: !input tts_engine
-            data:
-              media_player_entity_id: !input tts_media_players
-              message: "{{ message }}"
+  # A single self-sustaining loop is the (helper-free) memory of which side
+  # was announced last. It always runs "wait for close -> announce close ->
+  # wait for open -> announce open" in that fixed order, so it physically
+  # cannot announce the same side twice in a row: after announcing "close"
+  # it is blocked waiting for the *open* threshold (outdoor a full 2x
+  # hysteresis below indoor) before it can loop back and announce "close"
+  # again. Because `mode: single`, all the extra "close"/"open" triggers a
+  # flapping sensor produces while the loop is waiting are silently dropped.
+  #
+  # `while: trigger is defined` keeps the loop alive for a real run (started
+  # by any of the triggers above) but makes it a no-op for a manual
+  # whole-automation Run (which has no trigger and would otherwise hang on
+  # the first wait). Individual send steps are still testable on their own -
+  # see the per-action Run notes on each one.
+  - alias: Alternating open/close announcement loop
+    repeat:
+      while: "{{ trigger is defined }}"
+      sequence:
+        # ---------- wait until it is warmer outside (debounced) ----------
+        - alias: Wait for the "close" threshold
+          repeat:
+            sequence:
+              - wait_template: >
+                  {{ states(indoor_temp) not in ['unknown', 'unavailable', 'none']
+                     and states(outdoor_temp) not in ['unknown', 'unavailable', 'none']
+                     and states(outdoor_temp) | float
+                         >= states(indoor_temp) | float + hysteresis | float }}
+              - delay:
+                  minutes: !input debounce_minutes
+            # After the debounce delay, only proceed if the condition is
+            # still true; otherwise it was a blip and we wait again.
+            until: >
+              {{ states(indoor_temp) not in ['unknown', 'unavailable', 'none']
+                 and states(outdoor_temp) not in ['unknown', 'unavailable', 'none']
+                 and states(outdoor_temp) | float
+                     >= states(indoor_temp) | float + hysteresis | float }}
 
-  - alias: Send push notification
-    if:
-      - condition: or
-        conditions:
-          # Same temperature/window-sensor gating as TTS, but deliberately
-          # WITHOUT a time-window condition - push should go out whenever
-          # the underlying condition is met, any time of day.
-          - condition: and
-            conditions:
-              - condition: template
-                value_template: "{{ trigger is defined and trigger.id == 'close' }}"
-              - condition: template
-                value_template: >
-                  {{ window_sensors | count == 0
-                     or window_sensors | select('is_state', 'on') | list | count > 0 }}
-          - condition: and
-            conditions:
-              - condition: template
-                value_template: "{{ trigger is defined and trigger.id == 'open' }}"
-              - condition: numeric_state
-                entity_id: !input indoor_temp
-                above: !input min_indoor_open
-              - condition: template
-                value_template: >
-                  {{ window_sensors | count == 0
-                     or window_sensors | select('is_state', 'off') | list | count > 0 }}
-          # Manual test run: no real close/open trigger, skip the gating.
-          - condition: template
-            value_template: "{{ trigger is not defined or trigger.id not in ['close', 'open'] }}"
-    then:
-      - variables:
-          message_close: !input message_close
-          message_open: !input message_open
-          test_message: !input test_message
-          notify_targets_input: !input notify_targets
-          message: >
-            {% if trigger is defined and trigger.id == 'close' %}
-              {{ message_close }}
-            {% elif trigger is defined and trigger.id == 'open' %}
-              {{ message_open }}
-            {% else %}
-              {{ test_message }}
-            {% endif %}
-          # Notify targets are picked directly (no guessing a service name,
-          # no relying on a person's device_trackers to find the right
-          # device). For a real automatic run, a target is only sent to if
-          # its device has a device_tracker that reports "home" - no
-          # tracker found, or not home, means it's skipped. A manual test
-          # run (no trigger context) always sends to every configured
-          # target regardless of presence.
-          notify_targets: >
-            {% if trigger is defined and trigger.id in ['close', 'open'] %}
-              {% set ns = namespace(targets=[]) %}
-              {% for nt in notify_targets_input %}
-                {% set trk = namespace(home=false) %}
-                {% set did = device_id(nt) %}
-                {% if did %}
-                  {% for e in device_entities(did) %}
-                    {% if e.startswith('device_tracker.') and is_state(e, 'home') %}
-                      {% set trk.home = true %}
-                    {% endif %}
-                  {% endfor %}
-                {% endif %}
-                {% if trk.home %}
-                  {% set ns.targets = ns.targets + [nt] %}
-                {% endif %}
-              {% endfor %}
-              {{ ns.targets }}
-            {% else %}
-              {{ notify_targets_input }}
-            {% endif %}
-      - repeat:
-          for_each: "{{ notify_targets }}"
-          sequence:
-            - action: notify.send_message
+        - alias: Send TTS announcement (close windows)
+          # Own `variables:` so this step can be Run standalone from the
+          # editor (per-action Run does NOT carry over variables defined
+          # outside the action being run). A standalone test Run has no
+          # `trigger`, so it falls back to the test message and ignores the
+          # time-window / window-sensor gating.
+          variables:
+            message_close: !input message_close
+            test_message: !input test_message
+            tts_engine: !input tts_engine
+            tts_media_players: !input tts_media_players
+            window_sensors: !input window_sensors
+            message: "{{ message_close if trigger is defined else test_message }}"
+          if:
+            - condition: template
+              value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
+            - condition: or
+              conditions:
+                - condition: template
+                  value_template: "{{ trigger is not defined }}"
+                - condition: and
+                  conditions:
+                    - condition: time
+                      after: !input morning_start
+                      before: !input morning_end
+                    - condition: template
+                      value_template: >
+                        {{ window_sensors | count == 0
+                           or window_sensors | select('is_state', 'on') | list | count > 0 }}
+          then:
+            - action: tts.speak
               target:
-                entity_id: "{{ repeat.item }}"
+                entity_id: !input tts_engine
               data:
-                title: !input notify_title
+                media_player_entity_id: !input tts_media_players
                 message: "{{ message }}"
+
+        - alias: Send push notification (close windows)
+          variables:
+            message_close: !input message_close
+            test_message: !input test_message
+            notify_targets_input: !input notify_targets
+            window_sensors: !input window_sensors
+            message: "{{ message_close if trigger is defined else test_message }}"
+            # Real run: only targets whose device has a device_tracker
+            # reporting "home". Standalone test Run: every configured target.
+            notify_targets: >
+              {% if trigger is defined %}
+                {% set ns = namespace(targets=[]) %}
+                {% for nt in notify_targets_input %}
+                  {% set trk = namespace(home=false) %}
+                  {% set did = device_id(nt) %}
+                  {% if did %}
+                    {% for e in device_entities(did) %}
+                      {% if e.startswith('device_tracker.') and is_state(e, 'home') %}
+                        {% set trk.home = true %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                  {% if trk.home %}
+                    {% set ns.targets = ns.targets + [nt] %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.targets }}
+              {% else %}
+                {{ notify_targets_input }}
+              {% endif %}
+          # Push is intentionally NOT time-restricted; only the window-sensor
+          # plausibility check applies (skipped on a standalone test Run).
+          if:
+            - condition: or
+              conditions:
+                - condition: template
+                  value_template: "{{ trigger is not defined }}"
+                - condition: template
+                  value_template: >
+                    {{ window_sensors | count == 0
+                       or window_sensors | select('is_state', 'on') | list | count > 0 }}
+          then:
+            - repeat:
+                for_each: "{{ notify_targets }}"
+                sequence:
+                  - action: notify.send_message
+                    target:
+                      entity_id: "{{ repeat.item }}"
+                    data:
+                      title: !input notify_title
+                      message: "{{ message }}"
+
+        # ---------- wait until it is cooler outside (debounced) ----------
+        - alias: Wait for the "open" threshold
+          repeat:
+            sequence:
+              - wait_template: >
+                  {{ states(indoor_temp) not in ['unknown', 'unavailable', 'none']
+                     and states(outdoor_temp) not in ['unknown', 'unavailable', 'none']
+                     and states(outdoor_temp) | float
+                         <= states(indoor_temp) | float - hysteresis | float }}
+              - delay:
+                  minutes: !input debounce_minutes
+            until: >
+              {{ states(indoor_temp) not in ['unknown', 'unavailable', 'none']
+                 and states(outdoor_temp) not in ['unknown', 'unavailable', 'none']
+                 and states(outdoor_temp) | float
+                     <= states(indoor_temp) | float - hysteresis | float }}
+
+        - alias: Send TTS announcement (open windows)
+          variables:
+            message_open: !input message_open
+            test_message: !input test_message
+            tts_engine: !input tts_engine
+            tts_media_players: !input tts_media_players
+            window_sensors: !input window_sensors
+            message: "{{ message_open if trigger is defined else test_message }}"
+          if:
+            - condition: template
+              value_template: "{{ tts_engine != '' and tts_media_players | count > 0 }}"
+            - condition: or
+              conditions:
+                - condition: template
+                  value_template: "{{ trigger is not defined }}"
+                - condition: and
+                  conditions:
+                    - condition: time
+                      after: !input evening_start
+                      before: !input evening_end
+                    - condition: numeric_state
+                      entity_id: !input indoor_temp
+                      above: !input min_indoor_open
+                    - condition: template
+                      value_template: >
+                        {{ window_sensors | count == 0
+                           or window_sensors | select('is_state', 'off') | list | count > 0 }}
+          then:
+            - action: tts.speak
+              target:
+                entity_id: !input tts_engine
+              data:
+                media_player_entity_id: !input tts_media_players
+                message: "{{ message }}"
+
+        - alias: Send push notification (open windows)
+          variables:
+            message_open: !input message_open
+            test_message: !input test_message
+            notify_targets_input: !input notify_targets
+            window_sensors: !input window_sensors
+            message: "{{ message_open if trigger is defined else test_message }}"
+            notify_targets: >
+              {% if trigger is defined %}
+                {% set ns = namespace(targets=[]) %}
+                {% for nt in notify_targets_input %}
+                  {% set trk = namespace(home=false) %}
+                  {% set did = device_id(nt) %}
+                  {% if did %}
+                    {% for e in device_entities(did) %}
+                      {% if e.startswith('device_tracker.') and is_state(e, 'home') %}
+                        {% set trk.home = true %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                  {% if trk.home %}
+                    {% set ns.targets = ns.targets + [nt] %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.targets }}
+              {% else %}
+                {{ notify_targets_input }}
+              {% endif %}
+          # Push is intentionally NOT time-restricted; on a real run it still
+          # requires it to be warm enough inside for airing to make sense.
+          if:
+            - condition: or
+              conditions:
+                - condition: template
+                  value_template: "{{ trigger is not defined }}"
+                - condition: and
+                  conditions:
+                    - condition: numeric_state
+                      entity_id: !input indoor_temp
+                      above: !input min_indoor_open
+                    - condition: template
+                      value_template: >
+                        {{ window_sensors | count == 0
+                           or window_sensors | select('is_state', 'off') | list | count > 0 }}
+          then:
+            - repeat:
+                for_each: "{{ notify_targets }}"
+                sequence:
+                  - action: notify.send_message
+                    target:
+                      entity_id: "{{ repeat.item }}"
+                    data:
+                      title: !input notify_title
+                      message: "{{ message }}"

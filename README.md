@@ -7,14 +7,16 @@ imported directly into Home Assistant via an import link.
 
 ## Available blueprints
 
-### [Airing Reminder – Open/Close Windows](blueprints/automation/lueften/README.md) (automation) — v1.0.0
+### [Airing Reminder – Open/Close Windows](blueprints/automation/lueften/README.md) (automation) — v1.0.1
 
 Announces once in the morning to close the windows and once in the evening
-to open them, based on indoor/outdoor temperature. Optional TTS
-announcements (time-window-restricted) on any number of media players,
-push notifications (not time-restricted) to directly selected notify
-targets while their linked device is home, and optional window sensors
-for plausibility checking. See the
+to open them, based on indoor/outdoor temperature. Announcements strictly
+alternate close → open → close, so the same reminder is never sent twice in
+a row (no helper entities needed). Optional TTS announcements
+(time-window-restricted) on any number of media players, push
+notifications (not time-restricted) to directly selected notify targets
+while their linked device is home, and optional window sensors for
+plausibility checking. See the
 [blueprint's README](blueprints/automation/lueften/README.md) for all
 inputs and details, and its
 [CHANGELOG](blueprints/automation/lueften/CHANGELOG.md) for version

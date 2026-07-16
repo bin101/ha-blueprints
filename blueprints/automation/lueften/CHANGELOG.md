@@ -4,6 +4,21 @@ All notable changes to this blueprint are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this blueprint follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-07-16
+
+### Fixed
+
+- The same reminder could be sent several times a day when the outdoor
+  temperature flapped around a single threshold: each of the two
+  independent template triggers re-armed on its own, so a brief dip below
+  and back above the "close" threshold fired "close windows" again without
+  an "open" ever happening in between. Announcements now run through a
+  single self-sustaining wait loop that strictly alternates close -> open
+  -> close, so the same side can never be announced twice in a row. After
+  announcing "close" the loop blocks on the "open" threshold (and vice
+  versa), and `mode: single` drops the redundant flapping triggers while it
+  waits. Still no helper entities required, and all inputs are unchanged.
+
 ## [1.0.0] - 2026-07-12
 
 ### Added
